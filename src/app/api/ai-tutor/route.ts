@@ -67,7 +67,10 @@ export async function POST(req: NextRequest) {
     const lastMessage = messages[messages.length - 1] as { role: string; content: string };
 
     const chat = model.startChat({
-      systemInstruction: systemPrompt,
+      systemInstruction: {
+        role: "user",
+        parts: [{ text: systemPrompt }],
+      },
       history: geminiHistory,
     });
 
