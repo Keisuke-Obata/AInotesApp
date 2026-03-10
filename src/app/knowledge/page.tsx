@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 interface KnowledgeItem {
@@ -11,53 +11,48 @@ interface KnowledgeItem {
   createdAt: string;
 }
 
+interface SyncResult {
+  added: number;
+  removed: number;
+  total: number;
+}
+
 export default function KnowledgePage() {
   const [items, setItems] = useState<KnowledgeItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [subject, setSubject] = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
 
   useEffect(() => {
     fetchItems();
   }, []);
 
   const fetchItems = async () => {
-    const res = await fetch("/api/knowledge");
-    setItems(await res.json());
-    setLoading(false);
-  };
-
-  const handleUpload = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const file = fileRef.current?.files?.[0];
-    if (!file || !subject.trim()) return;
-
-    setUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("subject", subject.trim());
-
     try {
-      const res = await fetch("/api/knowledge", {
-        method: "POST",
-        body: formData,
-      });
+      const res = await fetch("/api/knowledge");
       if (!res.ok) throw new Error();
-      setSubject("");
-      if (fileRef.current) fileRef.current.value = "";
-      fetchItems();
+      setItems(await res.json());
     } catch {
-      alert("アップロードに失敗しました");
+      console.error("ナレッジ取得エラー");
     } finally {
-      setUploading(false);
+      setLoading(false);
     }
   };
 
-  const deleteItem = async (id: string) => {
-    if (!confirm("このナレッジを削除しますか？")) return;
-    await fetch(`/api/knowledge/${id}`, { method: "DELETE" });
-    fetchItems();
+  const syncFromDrive = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch("/api/knowledge", { method: "POST" });
+      if (!res.ok) throw new Error();
+      const result: SyncResult = await res.json();
+      setSyncResult(result);
+      await fetchItems();
+    } catch {
+      alert("同期に失敗しました。Google Drive の設定を確認してください。");
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const subjects = [...new Set(items.map((i) => i.subject))];
@@ -71,58 +66,28 @@ export default function KnowledgePage() {
           </Link>
           <h1 className="text-2xl font-bold">ナレッジ管理</h1>
         </div>
+        <button
+          onClick={syncFromDrive}
+          disabled={syncing}
+          className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 transition"
+        >
+          {syncing ? "同期中..." : "Google Drive と同期"}
+        </button>
       </div>
 
-      <p className="text-sm text-gray-500 mb-6">
-        PDFファイルをアップロードすると、AI先生が回答する際の参考資料として活用されます。
-        ファイルはGoogleドライブに保存されます。
+      <p className="text-sm text-gray-500 mb-4">
+        Google
+        ドライブの指定フォルダにサブフォルダ（科目名）を作り、PDFを追加してください。
+        「同期」ボタンで自動的に取り込まれます。
       </p>
 
-      {/* Upload form */}
-      <form
-        onSubmit={handleUpload}
-        className="mb-8 p-5 bg-white rounded-lg border space-y-4"
-      >
-        <h3 className="font-bold text-sm text-gray-700">
-          PDFナレッジを追加
-        </h3>
-        <div className="flex gap-4 items-end flex-wrap">
-          <div className="flex-1 min-w-[200px]">
-            <label className="block text-sm font-medium text-gray-600 mb-1">
-              科目
-            </label>
-            <input
-              type="text"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-300 outline-none"
-              placeholder="例: 数学、英語、物理"
-              required
-            />
-          </div>
-          <div className="flex-1 min-w-[200px]">
-            <label className="block text-sm font-medium text-gray-600 mb-1">
-              PDFファイル
-            </label>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".pdf"
-              className="w-full text-sm file:mr-3 file:px-3 file:py-2 file:border-0 file:rounded-lg file:bg-emerald-50 file:text-emerald-700 file:font-medium file:cursor-pointer"
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={uploading}
-            className="px-5 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 transition"
-          >
-            {uploading ? "アップロード中..." : "アップロード"}
-          </button>
+      {syncResult && (
+        <div className="mb-4 p-3 bg-emerald-50 text-emerald-700 rounded-lg text-sm">
+          同期完了: {syncResult.added}件追加 / {syncResult.removed}件削除 /
+          合計{syncResult.total}件
         </div>
-      </form>
+      )}
 
-      {/* Items */}
       {loading ? (
         <p className="text-gray-400 text-center py-12">読み込み中...</p>
       ) : items.length === 0 ? (
@@ -130,7 +95,8 @@ export default function KnowledgePage() {
           <p className="text-4xl mb-3">&#x1F4DA;</p>
           <p>ナレッジがありません</p>
           <p className="text-sm mt-1">
-            PDFを追加すると、AI先生がより的確なアドバイスを提供します
+            Google
+            ドライブにPDFを追加して「同期」ボタンを押してください
           </p>
         </div>
       ) : (
@@ -165,12 +131,6 @@ export default function KnowledgePage() {
                             )}
                           </p>
                         </div>
-                        <button
-                          onClick={() => deleteItem(item.id)}
-                          className="text-xs text-red-400 hover:text-red-600"
-                        >
-                          削除
-                        </button>
                       </div>
                       {item.extractedText && (
                         <details className="mt-2">

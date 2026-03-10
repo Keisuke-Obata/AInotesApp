@@ -14,32 +14,46 @@ export function getDriveClient() {
   return google.drive({ version: "v3", auth: getAuth() });
 }
 
-export async function uploadPdfToDrive(
-  fileName: string,
-  fileBuffer: Buffer
-): Promise<string> {
+export interface DriveFile {
+  id: string;
+  name: string;
+  subject: string;
+}
+
+/**
+ * List all PDFs in the specified folder's subfolders.
+ * Subfolder name = subject (科目).
+ * Structure: FOLDER_ID / 数学 / file.pdf
+ */
+export async function listPdfsInFolder(): Promise<DriveFile[]> {
   const drive = getDriveClient();
   const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+  if (!folderId) throw new Error("GOOGLE_DRIVE_FOLDER_ID is not set");
 
-  const { Readable } = await import("stream");
-  const stream = new Readable();
-  stream.push(fileBuffer);
-  stream.push(null);
-
-  const res = await drive.files.create({
-    requestBody: {
-      name: fileName,
-      mimeType: "application/pdf",
-      ...(folderId ? { parents: [folderId] } : {}),
-    },
-    media: {
-      mimeType: "application/pdf",
-      body: stream,
-    },
-    fields: "id",
+  // 1. List subfolders
+  const foldersRes = await drive.files.list({
+    q: `'${folderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+    fields: "files(id, name)",
   });
+  const subfolders = foldersRes.data.files || [];
 
-  return res.data.id!;
+  // 2. List PDFs in each subfolder
+  const allFiles: DriveFile[] = [];
+  for (const folder of subfolders) {
+    const filesRes = await drive.files.list({
+      q: `'${folder.id}' in parents and mimeType = 'application/pdf' and trashed = false`,
+      fields: "files(id, name)",
+    });
+    for (const file of filesRes.data.files || []) {
+      allFiles.push({
+        id: file.id!,
+        name: file.name!,
+        subject: folder.name!,
+      });
+    }
+  }
+
+  return allFiles;
 }
 
 export async function downloadPdfFromDrive(
@@ -51,9 +65,4 @@ export async function downloadPdfFromDrive(
     { responseType: "arraybuffer" }
   );
   return Buffer.from(res.data as ArrayBuffer);
-}
-
-export async function deletePdfFromDrive(fileId: string): Promise<void> {
-  const drive = getDriveClient();
-  await drive.files.delete({ fileId });
 }
