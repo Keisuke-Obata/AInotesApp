@@ -16,22 +16,26 @@ export async function POST(req: NextRequest) {
 
     const client = new Anthropic({ apiKey });
 
-    // Fetch knowledge base for context
-    const knowledgeItems = await prisma.knowledge.findMany({
-      take: 20,
+    // Fetch PDF knowledge for context
+    const knowledgeItems = await prisma.knowledgePdf.findMany({
+      take: 10,
       orderBy: { updatedAt: "desc" },
+      select: { subject: true, fileName: true, extractedText: true },
     });
 
     let knowledgeContext = "";
     if (knowledgeItems.length > 0) {
       knowledgeContext =
-        "\n\n【参考ナレッジベース】\n" +
+        "\n\n【参考ナレッジベース（登録されたPDF資料から抽出）】\n" +
         knowledgeItems
-          .map(
-            (k) =>
-              `- 科目: ${k.subject}\n  問題: ${k.question}\n  解答: ${k.answer}`
-          )
-          .join("\n");
+          .map((k) => {
+            const text =
+              k.extractedText.length > 2000
+                ? k.extractedText.slice(0, 2000) + "..."
+                : k.extractedText;
+            return `--- ${k.subject}: ${k.fileName} ---\n${text}`;
+          })
+          .join("\n\n");
     }
 
     const systemPrompt = `あなたは優秀なAI先生です。生徒が手書きノートアプリで書いた内容について質問しています。
@@ -42,13 +46,12 @@ export async function POST(req: NextRequest) {
 - 間違いがあれば優しく指摘し、正しい解き方を教えてください
 - 良い点があれば褒めてください
 - 具体的な例を挙げて説明すると効果的です
+- ナレッジベースに関連する情報があれば、それを参考にして回答してください
 - 日本語で回答してください${knowledgeContext}`;
 
-    // Build messages for Claude API
     const claudeMessages: Anthropic.MessageParam[] = messages.map(
       (msg: { role: string; content: string }, index: number) => {
         if (msg.role === "user" && index === 0 && selectedImage) {
-          // First user message includes the image
           return {
             role: "user" as const,
             content: [

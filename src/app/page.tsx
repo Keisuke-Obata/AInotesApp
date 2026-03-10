@@ -24,8 +24,13 @@ export default function Home() {
       </div>
 
       <div className="mt-8 max-w-md text-center text-gray-500 text-sm space-y-2">
-        <p>手書きでノートを取り、投げなわツールで囲んだ箇所についてAI先生に質問できます。</p>
-        <p>ナレッジDBに問題を登録すると、AI先生がより的確なアドバイスを提供します。</p>
+        <p>
+          手書きでノートを取り、投げなわツールで囲んだ箇所について
+          AI先生に質問できます。
+        </p>
+        <p>
+          ナレッジにPDFを登録すると、AI先生がより的確なアドバイスを提供します。
+        </p>
       </div>
     </div>
   );

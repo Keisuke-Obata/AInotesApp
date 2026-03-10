@@ -1,22 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 
 interface KnowledgeItem {
   id: string;
+  fileName: string;
   subject: string;
-  question: string;
-  answer: string;
+  extractedText: string;
   createdAt: string;
 }
 
 export default function KnowledgePage() {
   const [items, setItems] = useState<KnowledgeItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({ subject: "", question: "", answer: "" });
+  const [uploading, setUploading] = useState(false);
+  const [subject, setSubject] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchItems();
@@ -28,35 +28,30 @@ export default function KnowledgePage() {
     setLoading(false);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingId) {
-      await fetch(`/api/knowledge/${editingId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-    } else {
-      await fetch("/api/knowledge", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-    }
-    setForm({ subject: "", question: "", answer: "" });
-    setShowForm(false);
-    setEditingId(null);
-    fetchItems();
-  };
+    const file = fileRef.current?.files?.[0];
+    if (!file || !subject.trim()) return;
 
-  const startEdit = (item: KnowledgeItem) => {
-    setEditingId(item.id);
-    setForm({
-      subject: item.subject,
-      question: item.question,
-      answer: item.answer,
-    });
-    setShowForm(true);
+    setUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("subject", subject.trim());
+
+    try {
+      const res = await fetch("/api/knowledge", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) throw new Error();
+      setSubject("");
+      if (fileRef.current) fileRef.current.value = "";
+      fetchItems();
+    } catch {
+      alert("アップロードに失敗しました");
+    } finally {
+      setUploading(false);
+    }
   };
 
   const deleteItem = async (id: string) => {
@@ -76,92 +71,58 @@ export default function KnowledgePage() {
           </Link>
           <h1 className="text-2xl font-bold">ナレッジ管理</h1>
         </div>
-        <button
-          onClick={() => {
-            setShowForm(true);
-            setEditingId(null);
-            setForm({ subject: "", question: "", answer: "" });
-          }}
-          className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm font-medium"
-        >
-          + 問題を追加
-        </button>
       </div>
 
       <p className="text-sm text-gray-500 mb-6">
-        ここに登録した問題と解答は、AI先生が回答する際の参考ナレッジとして活用されます。
+        PDFファイルをアップロードすると、AI先生が回答する際の参考資料として活用されます。
+        ファイルはGoogleドライブに保存されます。
       </p>
 
-      {/* Form */}
-      {showForm && (
-        <form
-          onSubmit={handleSubmit}
-          className="mb-6 p-5 bg-white rounded-lg border space-y-4"
-        >
-          <h3 className="font-bold text-sm text-gray-700">
-            {editingId ? "ナレッジを編集" : "新しいナレッジを追加"}
-          </h3>
-          <div>
+      {/* Upload form */}
+      <form
+        onSubmit={handleUpload}
+        className="mb-8 p-5 bg-white rounded-lg border space-y-4"
+      >
+        <h3 className="font-bold text-sm text-gray-700">
+          PDFナレッジを追加
+        </h3>
+        <div className="flex gap-4 items-end flex-wrap">
+          <div className="flex-1 min-w-[200px]">
             <label className="block text-sm font-medium text-gray-600 mb-1">
               科目
             </label>
             <input
               type="text"
-              value={form.subject}
-              onChange={(e) => setForm({ ...form, subject: e.target.value })}
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
               className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-300 outline-none"
               placeholder="例: 数学、英語、物理"
               required
             />
           </div>
-          <div>
+          <div className="flex-1 min-w-[200px]">
             <label className="block text-sm font-medium text-gray-600 mb-1">
-              問題
+              PDFファイル
             </label>
-            <textarea
-              value={form.question}
-              onChange={(e) => setForm({ ...form, question: e.target.value })}
-              className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-300 outline-none"
-              rows={3}
-              placeholder="問題文を入力してください"
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pdf"
+              className="w-full text-sm file:mr-3 file:px-3 file:py-2 file:border-0 file:rounded-lg file:bg-emerald-50 file:text-emerald-700 file:font-medium file:cursor-pointer"
               required
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-600 mb-1">
-              解答・解説
-            </label>
-            <textarea
-              value={form.answer}
-              onChange={(e) => setForm({ ...form, answer: e.target.value })}
-              className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-emerald-300 outline-none"
-              rows={4}
-              placeholder="模範解答や解説を入力してください"
-              required
-            />
-          </div>
-          <div className="flex gap-2 justify-end">
-            <button
-              type="button"
-              onClick={() => {
-                setShowForm(false);
-                setEditingId(null);
-              }}
-              className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 rounded-lg transition"
-            >
-              キャンセル
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition"
-            >
-              {editingId ? "更新" : "追加"}
-            </button>
-          </div>
-        </form>
-      )}
+          <button
+            type="submit"
+            disabled={uploading}
+            className="px-5 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 transition"
+          >
+            {uploading ? "アップロード中..." : "アップロード"}
+          </button>
+        </div>
+      </form>
 
-      {/* Items grouped by subject */}
+      {/* Items */}
       {loading ? (
         <p className="text-gray-400 text-center py-12">読み込み中...</p>
       ) : items.length === 0 ? (
@@ -169,49 +130,59 @@ export default function KnowledgePage() {
           <p className="text-4xl mb-3">&#x1F4DA;</p>
           <p>ナレッジがありません</p>
           <p className="text-sm mt-1">
-            問題を追加すると、AI先生がより的確なアドバイスを提供します
+            PDFを追加すると、AI先生がより的確なアドバイスを提供します
           </p>
         </div>
       ) : (
         <div className="space-y-6">
-          {subjects.map((subject) => (
-            <div key={subject}>
+          {subjects.map((subj) => (
+            <div key={subj}>
               <h2 className="text-sm font-bold text-gray-500 mb-2 flex items-center gap-2">
                 <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded">
-                  {subject}
+                  {subj}
                 </span>
                 <span className="text-gray-300">
-                  ({items.filter((i) => i.subject === subject).length})
+                  ({items.filter((i) => i.subject === subj).length})
                 </span>
               </h2>
               <div className="space-y-2">
                 {items
-                  .filter((i) => i.subject === subject)
+                  .filter((i) => i.subject === subj)
                   .map((item) => (
                     <div
                       key={item.id}
                       className="p-4 bg-white rounded-lg border"
                     >
                       <div className="flex justify-between items-start mb-2">
-                        <p className="font-medium text-sm">{item.question}</p>
-                        <div className="flex gap-2 ml-4 flex-shrink-0">
-                          <button
-                            onClick={() => startEdit(item)}
-                            className="text-xs text-blue-500 hover:text-blue-700"
-                          >
-                            編集
-                          </button>
-                          <button
-                            onClick={() => deleteItem(item.id)}
-                            className="text-xs text-red-400 hover:text-red-600"
-                          >
-                            削除
-                          </button>
+                        <div>
+                          <p className="font-medium text-sm flex items-center gap-2">
+                            <span className="text-red-500">&#x1F4C4;</span>
+                            {item.fileName}
+                          </p>
+                          <p className="text-xs text-gray-400 mt-1">
+                            {new Date(item.createdAt).toLocaleDateString(
+                              "ja-JP"
+                            )}
+                          </p>
                         </div>
+                        <button
+                          onClick={() => deleteItem(item.id)}
+                          className="text-xs text-red-400 hover:text-red-600"
+                        >
+                          削除
+                        </button>
                       </div>
-                      <p className="text-sm text-gray-600 bg-gray-50 p-2 rounded whitespace-pre-wrap">
-                        {item.answer}
-                      </p>
+                      {item.extractedText && (
+                        <details className="mt-2">
+                          <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600">
+                            抽出テキストを表示
+                          </summary>
+                          <p className="mt-2 text-xs text-gray-600 bg-gray-50 p-3 rounded max-h-40 overflow-y-auto whitespace-pre-wrap">
+                            {item.extractedText.slice(0, 1000)}
+                            {item.extractedText.length > 1000 ? "..." : ""}
+                          </p>
+                        </details>
+                      )}
                     </div>
                   ))}
               </div>

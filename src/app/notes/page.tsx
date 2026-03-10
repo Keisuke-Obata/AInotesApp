@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 interface Note {
   id: string;
   title: string;
-  createdAt: string;
   updatedAt: string;
 }
 

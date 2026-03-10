@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
 }
 
 model Note {
@@ -15,11 +16,12 @@ model Note {
   updatedAt DateTime @updatedAt
 }
 
-model Knowledge {
-  id        String   @id @default(cuid())
-  subject   String
-  question  String
-  answer    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model KnowledgePdf {
+  id            String   @id @default(cuid())
+  fileName      String
+  driveFileId   String
+  subject       String
+  extractedText String   @default("")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }

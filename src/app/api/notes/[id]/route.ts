@@ -7,9 +7,7 @@ export async function GET(
 ) {
   const { id } = await params;
   const note = await prisma.note.findUnique({ where: { id } });
-  if (!note) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  if (!note) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json(note);
 }
 

@@ -55,38 +55,27 @@ export default function NoteEditorPage({
   );
 
   const handleStrokesChange = useCallback(
-    (newStrokes: Stroke[]) => {
-      setStrokes(newStrokes);
-      save(newStrokes);
+    (s: Stroke[]) => {
+      setStrokes(s);
+      save(s);
     },
     [save]
   );
 
-  const handleLassoSelect = useCallback(
-    (imageDataUrl: string) => {
-      setSelectedImage(imageDataUrl);
-      setShowTutor(true);
-    },
-    []
-  );
+  const handleLassoSelect = useCallback((img: string) => {
+    setSelectedImage(img);
+    setShowTutor(true);
+  }, []);
 
-  const handleTitleBlur = () => {
-    if (note && title !== note.title) {
-      save(undefined, title);
-    }
-  };
-
-  if (!note) {
+  if (!note)
     return (
       <div className="flex items-center justify-center min-h-screen text-gray-400">
         読み込み中...
       </div>
     );
-  }
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* Header */}
       <header className="flex items-center gap-4 p-4 border-b bg-white">
         <Link
           href="/notes"
@@ -98,7 +87,9 @@ export default function NoteEditorPage({
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          onBlur={handleTitleBlur}
+          onBlur={() => {
+            if (note && title !== note.title) save(undefined, title);
+          }}
           className="text-xl font-bold flex-1 outline-none bg-transparent"
           placeholder="ノートタイトル"
         />
@@ -107,9 +98,7 @@ export default function NoteEditorPage({
         </span>
       </header>
 
-      {/* Main content */}
       <div className="flex-1 flex gap-4 p-4">
-        {/* Canvas area */}
         <div className={`${showTutor ? "flex-1" : "w-full"} transition-all`}>
           <HandwritingCanvas
             strokes={strokes}
@@ -118,7 +107,6 @@ export default function NoteEditorPage({
           />
         </div>
 
-        {/* AI Tutor panel */}
         {showTutor && (
           <div className="w-96 flex-shrink-0">
             <AiTutorPanel
