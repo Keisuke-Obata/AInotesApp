@@ -1,21 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { HfInference } from "@huggingface/inference";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
   try {
     const { messages, selectedImage, noteTitle } = await req.json();
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.HUGGINGFACE_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: "GEMINI_API_KEY is not configured" },
+        { error: "HUGGINGFACE_API_KEY is not configured" },
         { status: 500 }
       );
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const client = new HfInference(apiKey);
 
     // Fetch PDF knowledge for context (non-fatal if DB is not ready)
     let knowledgeContext = "";
@@ -54,41 +53,35 @@ export async function POST(req: NextRequest) {
 - ナレッジベースに関連する情報があれば、それを参考にして回答してください
 - 日本語で回答してください${knowledgeContext}`;
 
-    // Build Gemini conversation history
-    const geminiHistory: { role: "user" | "model"; parts: { text: string }[] }[] = [];
-    for (let i = 0; i < messages.length - 1; i++) {
-      const msg = messages[i] as { role: string; content: string };
-      geminiHistory.push({
-        role: msg.role === "assistant" ? "model" : "user",
-        parts: [{ text: msg.content }],
-      });
+    // Build conversation for HuggingFace
+    let conversationText = systemPrompt + "\n\n";
+
+    for (const msg of messages) {
+      const role = msg.role === "assistant" ? "Assistant" : "User";
+      conversationText += `${role}: ${msg.content}\n`;
     }
 
-    const lastMessage = messages[messages.length - 1] as { role: string; content: string };
+    conversationText += "Assistant: ";
 
-    const chat = model.startChat({
-      systemInstruction: {
-        role: "user",
-        parts: [{ text: systemPrompt }],
+    // Handle image if present in the first message
+    let imageUrl: string | undefined;
+    if (selectedImage && messages.length > 0 && messages[0].role === "user") {
+      imageUrl = selectedImage;
+    }
+
+    // Use text generation model with context about the image
+    const response = await client.textGeneration({
+      model: "mistralai/Mistral-7B-Instruct-v0.3",
+      inputs: conversationText,
+      parameters: {
+        max_new_tokens: 512,
+        temperature: 0.7,
       },
-      history: geminiHistory,
     });
 
-    // Build the last message parts (with optional image)
-    const parts: ({ text: string } | { inlineData: { mimeType: string; data: string } })[] = [];
-
-    if (lastMessage.role === "user" && messages.length === 1 && selectedImage) {
-      parts.push({
-        inlineData: {
-          mimeType: "image/png",
-          data: selectedImage.replace(/^data:image\/png;base64,/, ""),
-        },
-      });
-    }
-    parts.push({ text: lastMessage.content });
-
-    const result = await chat.sendMessage(parts);
-    const reply = result.response.text() || "応答を取得できませんでした。";
+    const reply = response.generated_text
+      ? response.generated_text.split("Assistant: ").pop()?.trim() || "応答を取得できませんでした。"
+      : "応答を取得できませんでした。";
 
     return NextResponse.json({ reply });
   } catch (error) {
