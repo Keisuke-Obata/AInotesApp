@@ -17,19 +17,32 @@ export default function NotesPage() {
 
   useEffect(() => {
     fetch("/api/notes")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed to fetch notes");
+        return r.json();
+      })
       .then(setNotes)
+      .catch((e) => console.error("ノート一覧取得エラー:", e))
       .finally(() => setLoading(false));
   }, []);
 
   const createNote = async () => {
-    const res = await fetch("/api/notes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "新しいノート" }),
-    });
-    const note = await res.json();
-    router.push(`/notes/${note.id}`);
+    try {
+      const res = await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "新しいノート" }),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err);
+      }
+      const note = await res.json();
+      router.push(`/notes/${note.id}`);
+    } catch (e) {
+      console.error("ノート作成エラー:", e);
+      alert("ノートの作成に失敗しました。もう一度お試しください。");
+    }
   };
 
   const deleteNote = async (id: string) => {
