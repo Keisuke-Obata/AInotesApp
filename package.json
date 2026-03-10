@@ -10,7 +10,7 @@
     "db:push": "prisma db push"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.78.0",
+    "@google/generative-ai": "^0.24.1",
     "@prisma/client": "^6.19.2",
     "@vercel/postgres": "^0.10.0",
     "googleapis": "^171.4.0",

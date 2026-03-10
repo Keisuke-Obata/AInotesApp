@@ -1,20 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { prisma } from "@/lib/prisma";
 
 export async function POST(req: NextRequest) {
   try {
     const { messages, selectedImage, noteTitle } = await req.json();
 
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: "ANTHROPIC_API_KEY is not configured" },
+        { error: "GEMINI_API_KEY is not configured" },
         { status: 500 }
       );
     }
 
-    const client = new Anthropic({ apiKey });
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
     // Fetch PDF knowledge for context (non-fatal if DB is not ready)
     let knowledgeContext = "";
@@ -53,42 +54,38 @@ export async function POST(req: NextRequest) {
 - ナレッジベースに関連する情報があれば、それを参考にして回答してください
 - 日本語で回答してください${knowledgeContext}`;
 
-    const claudeMessages: Anthropic.MessageParam[] = messages.map(
-      (msg: { role: string; content: string }, index: number) => {
-        if (msg.role === "user" && index === 0 && selectedImage) {
-          return {
-            role: "user" as const,
-            content: [
-              {
-                type: "image" as const,
-                source: {
-                  type: "base64" as const,
-                  media_type: "image/png" as const,
-                  data: selectedImage.replace(/^data:image\/png;base64,/, ""),
-                },
-              },
-              { type: "text" as const, text: msg.content },
-            ],
-          };
-        }
-        return {
-          role: msg.role as "user" | "assistant",
-          content: msg.content,
-        };
-      }
-    );
+    // Build Gemini conversation history
+    const geminiHistory: { role: "user" | "model"; parts: { text: string }[] }[] = [];
+    for (let i = 0; i < messages.length - 1; i++) {
+      const msg = messages[i] as { role: string; content: string };
+      geminiHistory.push({
+        role: msg.role === "assistant" ? "model" : "user",
+        parts: [{ text: msg.content }],
+      });
+    }
 
-    const response = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 1024,
-      system: systemPrompt,
-      messages: claudeMessages,
+    const lastMessage = messages[messages.length - 1] as { role: string; content: string };
+
+    const chat = model.startChat({
+      systemInstruction: systemPrompt,
+      history: geminiHistory,
     });
 
-    const reply =
-      response.content[0].type === "text"
-        ? response.content[0].text
-        : "応答を取得できませんでした。";
+    // Build the last message parts (with optional image)
+    const parts: ({ text: string } | { inlineData: { mimeType: string; data: string } })[] = [];
+
+    if (lastMessage.role === "user" && messages.length === 1 && selectedImage) {
+      parts.push({
+        inlineData: {
+          mimeType: "image/png",
+          data: selectedImage.replace(/^data:image\/png;base64,/, ""),
+        },
+      });
+    }
+    parts.push({ text: lastMessage.content });
+
+    const result = await chat.sendMessage(parts);
+    const reply = result.response.text() || "応答を取得できませんでした。";
 
     return NextResponse.json({ reply });
   } catch (error) {
