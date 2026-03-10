@@ -39,16 +39,16 @@ export default function AiTutorPanel({
           noteTitle,
         }),
       });
-      if (!res.ok) throw new Error();
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "サーバーエラー");
       setMessages([...updated, { role: "assistant", content: data.reply }]);
-    } catch {
+    } catch (err) {
+      const errorDetail = err instanceof Error ? err.message : "";
       setMessages([
         ...updated,
         {
           role: "assistant",
-          content:
-            "エラーが発生しました。ANTHROPIC_API_KEYが設定されているか確認してください。",
+          content: `エラーが発生しました。${errorDetail || "しばらくしてからもう一度お試しください。"}`,
         },
       ]);
     } finally {

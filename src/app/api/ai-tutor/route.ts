@@ -16,26 +16,30 @@ export async function POST(req: NextRequest) {
 
     const client = new Anthropic({ apiKey });
 
-    // Fetch PDF knowledge for context
-    const knowledgeItems = await prisma.knowledgePdf.findMany({
-      take: 10,
-      orderBy: { updatedAt: "desc" },
-      select: { subject: true, fileName: true, extractedText: true },
-    });
-
+    // Fetch PDF knowledge for context (non-fatal if DB is not ready)
     let knowledgeContext = "";
-    if (knowledgeItems.length > 0) {
-      knowledgeContext =
-        "\n\n【参考ナレッジベース（登録されたPDF資料から抽出）】\n" +
-        knowledgeItems
-          .map((k) => {
-            const text =
-              k.extractedText.length > 2000
-                ? k.extractedText.slice(0, 2000) + "..."
-                : k.extractedText;
-            return `--- ${k.subject}: ${k.fileName} ---\n${text}`;
-          })
-          .join("\n\n");
+    try {
+      const knowledgeItems = await prisma.knowledgePdf.findMany({
+        take: 10,
+        orderBy: { updatedAt: "desc" },
+        select: { subject: true, fileName: true, extractedText: true },
+      });
+
+      if (knowledgeItems.length > 0) {
+        knowledgeContext =
+          "\n\n【参考ナレッジベース（登録されたPDF資料から抽出）】\n" +
+          knowledgeItems
+            .map((k) => {
+              const text =
+                k.extractedText.length > 2000
+                  ? k.extractedText.slice(0, 2000) + "..."
+                  : k.extractedText;
+              return `--- ${k.subject}: ${k.fileName} ---\n${text}`;
+            })
+            .join("\n\n");
+      }
+    } catch (dbError) {
+      console.warn("Failed to fetch knowledge PDFs (DB may not be migrated):", dbError);
     }
 
     const systemPrompt = `あなたは優秀なAI先生です。生徒が手書きノートアプリで書いた内容について質問しています。
@@ -89,8 +93,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ reply });
   } catch (error) {
     console.error("AI Tutor error:", error);
+    const message = error instanceof Error ? error.message : "AI応答の生成に失敗しました";
     return NextResponse.json(
-      { error: "AI応答の生成に失敗しました" },
+      { error: message },
       { status: 500 }
     );
   }
